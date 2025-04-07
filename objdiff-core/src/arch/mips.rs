@@ -188,6 +188,9 @@ impl ArchMips {
     }
 }
 
+use std::backtrace::Backtrace;
+
+
 impl Arch for ArchMips {
     fn scan_instructions(
         &self,
@@ -200,6 +203,7 @@ impl Arch for ArchMips {
         let instruction_flags = self.instruction_flags(diff_config);
         let mut ops = Vec::<ScannedInstruction>::with_capacity(code.len() / 4);
         let mut cur_addr = address as u32;
+        println!("{:08X} {}", cur_addr, code.len());
         for chunk in code.chunks_exact(4) {
             let code = self.endianness.read_u32_bytes(chunk.try_into()?);
             let instruction =
@@ -221,6 +225,9 @@ impl Arch for ArchMips {
         diff_config: &DiffObjConfig,
         cb: &mut dyn FnMut(InstructionPart) -> Result<()>,
     ) -> Result<()> {
+                let bt = Backtrace::capture();
+                println!("{bt}");
+                std::process::exit(0);
         let instruction = self.parse_ins_ref(resolved.ins_ref, resolved.code, diff_config)?;
         let display_flags = self.instruction_display_flags(diff_config);
         let opcode = instruction.opcode();

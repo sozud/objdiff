@@ -60,6 +60,7 @@ pub fn diff_code(
     right_symbol_idx: usize,
     diff_config: &DiffObjConfig,
 ) -> Result<(SymbolDiff, SymbolDiff)> {
+    println!("diff_code");
     let left_symbol = &left_obj.symbols[left_symbol_idx];
     let right_symbol = &right_obj.symbols[right_symbol_idx];
     let left_section = left_symbol
@@ -89,6 +90,7 @@ pub fn diff_code(
             )
         })?;
 
+    // println!("left_symbol {} {:08X}", left_symbol.name, left_symbol.address);
     let left_section_idx = left_symbol.section.unwrap();
     let right_section_idx = right_symbol.section.unwrap();
     let left_ops = left_obj.arch.scan_instructions(
@@ -427,6 +429,8 @@ fn diff_instruction(
         (None, None) => return Ok(InstructionDiffResult::new(InstructionDiffKind::None)),
     };
 
+    println!("diff_instruction {} {}", l.opcode, r.opcode);
+
     // If opcodes don't match, replace
     if l.opcode != r.opcode {
         state.diff_score += PENALTY_REPLACE;
@@ -440,9 +444,12 @@ fn diff_instruction(
         .resolve_instruction_ref(right_symbol_idx, r)
         .context("Failed to resolve right instruction")?;
 
-    if left_resolved.code != right_resolved.code
+    // println!("left_resolved {} right_resolved {}", left_resolved.code[0], right_resolved.code[0]);
+
+    if left_resolved.code == right_resolved.code
         || !reloc_eq(left_obj, right_obj, left_resolved, right_resolved, diff_config)
     {
+        println!("!=");
         // If either the raw code bytes or relocations don't match, process instructions and compare args
         let left_ins = left_obj.arch.process_instruction(left_resolved, diff_config)?;
         let right_ins = right_obj.arch.process_instruction(right_resolved, diff_config)?;

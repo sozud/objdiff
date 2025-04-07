@@ -9,6 +9,7 @@ pub fn display_diff(
     symbol_idx: usize,
     diff_config: &DiffObjConfig,
 ) -> String {
+    println!("display_diff");
     let mut output = String::new();
     for row in &diff.instruction_rows {
         output.push('[');

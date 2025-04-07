@@ -26,6 +26,8 @@ pub mod mips;
 pub mod ppc;
 #[cfg(feature = "x86")]
 pub mod x86;
+#[cfg(feature = "superh")]
+pub mod superh;
 
 /// Represents the type of data associated with an instruction
 pub enum DataType {
@@ -182,6 +184,7 @@ pub trait Arch: Send + Sync + Debug {
         resolved: ResolvedInstructionRef,
         diff_config: &DiffObjConfig,
     ) -> Result<ParsedInstruction> {
+        println!("process_instruction");
         let mut mnemonic = None;
         let mut args = Vec::with_capacity(8);
         self.display_instruction(resolved, diff_config, &mut |part| {
@@ -285,6 +288,8 @@ pub fn new_arch(object: &object::File) -> Result<Box<dyn Arch>> {
         object::Architecture::Arm => Box::new(arm::ArchArm::new(object)?),
         #[cfg(feature = "arm64")]
         object::Architecture::Aarch64 => Box::new(arm64::ArchArm64::new(object)?),
+        #[cfg(feature = "superh")]
+        object::Architecture::SuperH => Box::new(superh::ArchSuperH::new(object)?),
         arch => bail!("Unsupported architecture: {arch:?}"),
     })
 }

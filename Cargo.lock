@@ -475,7 +475,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.36.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle",
  "windows-targets 0.52.6",
 ]
@@ -3352,7 +3352,7 @@ dependencies = [
  "notify-debouncer-full",
  "num-traits",
  "objdiff-core",
- "object",
+ "object 0.36.7",
  "pbjson",
  "pbjson-build",
  "ppc750cl",
@@ -3428,6 +3428,13 @@ dependencies = [
  "wit-bindgen",
  "wit-deps",
  "xxhash-rust",
+]
+
+[[package]]
+name = "object"
+version = "0.36.7"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
