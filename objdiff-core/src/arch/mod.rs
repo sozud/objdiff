@@ -24,10 +24,10 @@ pub mod arm64;
 pub mod mips;
 #[cfg(feature = "ppc")]
 pub mod ppc;
-#[cfg(feature = "x86")]
-pub mod x86;
 #[cfg(feature = "superh")]
 pub mod superh;
+#[cfg(feature = "x86")]
+pub mod x86;
 
 /// Represents the type of data associated with an instruction
 pub enum DataType {
@@ -184,7 +184,7 @@ pub trait Arch: Send + Sync + Debug {
         resolved: ResolvedInstructionRef,
         diff_config: &DiffObjConfig,
     ) -> Result<ParsedInstruction> {
-        println!("process_instruction");
+        // println!("process_instruction");
         let mut mnemonic = None;
         let mut args = Vec::with_capacity(8);
         self.display_instruction(resolved, diff_config, &mut |part| {

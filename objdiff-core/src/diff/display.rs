@@ -155,7 +155,7 @@ pub fn display_row(
     diff_config: &DiffObjConfig,
     mut cb: impl FnMut(DiffTextSegment) -> Result<()>,
 ) -> Result<()> {
-    println!("display_row");
+    // println!("display_row");
     let Some(ins_ref) = ins_row.ins_ref else {
         cb(EOL_SEGMENT)?;
         return Ok(());

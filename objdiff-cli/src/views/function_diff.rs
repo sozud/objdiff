@@ -519,7 +519,7 @@ impl FunctionDiffUi {
         only_changed: bool,
     ) -> Option<HighlightKind> {
         let mut new_highlight = None;
-        println!("print_sym");
+        // println!("print_sym");
         for (y, ins_row) in symbol_diff
             .instruction_rows
             .iter()

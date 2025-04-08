@@ -190,7 +190,6 @@ impl ArchMips {
 
 use std::backtrace::Backtrace;
 
-
 impl Arch for ArchMips {
     fn scan_instructions(
         &self,
@@ -225,9 +224,9 @@ impl Arch for ArchMips {
         diff_config: &DiffObjConfig,
         cb: &mut dyn FnMut(InstructionPart) -> Result<()>,
     ) -> Result<()> {
-                let bt = Backtrace::capture();
-                println!("{bt}");
-                std::process::exit(0);
+        // let bt = Backtrace::capture();
+        // println!("{bt}");
+        // std::process::exit(0);
         let instruction = self.parse_ins_ref(resolved.ins_ref, resolved.code, diff_config)?;
         let display_flags = self.instruction_display_flags(diff_config);
         let opcode = instruction.opcode();
