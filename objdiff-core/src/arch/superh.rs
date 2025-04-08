@@ -39,18 +39,20 @@ fn match_ni_f(
 ) {
     match op & 0xf000 {
         0x7000 => {
-            parts.push(InstructionPart::opcode("add", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r"));
-            parts.push(InstructionPart::basic(format!("{:X}", (op >> 8) & 0xf)));
+            let reg = REG_NAMES[((op >> 8) & 0xf) as usize];
+            parts.push(InstructionPart::opcode("add", 0x7000));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic(reg));
         }
         0xe000 => {
-            parts.push(InstructionPart::opcode("mov", op));
-            parts.push(InstructionPart::basic(" #"));
-            parts.push(InstructionPart::basic(format!("{}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r"));
-            parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
+            let reg = REG_NAMES[((op >> 8) & 0xf) as usize];
+            parts.push(InstructionPart::opcode("mov", 0xe000));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque(reg));
         }
         _ => {
             parts.push(InstructionPart::basic(".word 0x"));
@@ -71,62 +73,87 @@ fn match_i_f(
     match op & 0xff00 {
         0xcd00 => {
             parts.push(InstructionPart::opcode("and.b", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", @(r0, gbr)"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xcf00 => {
             parts.push(InstructionPart::opcode("or.b", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", @(r0, gbr)"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xcc00 => {
             parts.push(InstructionPart::opcode("tst.b", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", @(r0, gbr)"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xce00 => {
             parts.push(InstructionPart::opcode("xor.b", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", @(r0, gbr)"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xc900 => {
             parts.push(InstructionPart::opcode("and", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r0"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0x8800 => {
             parts.push(InstructionPart::opcode("cmp/eq", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r0"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xcb00 => {
             parts.push(InstructionPart::opcode("or", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r0"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xc800 => {
             parts.push(InstructionPart::opcode("tst", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r0"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xca00 => {
             parts.push(InstructionPart::opcode("xor", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
-            parts.push(InstructionPart::basic(", r0"));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xc300 => {
             parts.push(InstructionPart::opcode("trapa", op));
-            parts.push(InstructionPart::basic(" #0x"));
-            parts.push(InstructionPart::basic(format!("{:02X}", op & 0xff)));
+            parts.push(InstructionPart::basic("#"));
+            parts.push(InstructionPart::unsigned(op & 0xff));
         }
         _ => match_ni_f(v_addr, op, mode, parts, resolved, branch_dest),
     }
@@ -144,19 +171,18 @@ fn match_nd8_f(
         0x9000 => {
             let thing = (op as u32 & 0xff) * 2 + 4 + v_addr;
 
+            parts.push(InstructionPart::opcode("mov.w", 0x9000));
+            parts.push(InstructionPart::basic("@("));
             if resolved.relocation.is_some() {
-                parts.push(InstructionPart::opcode("mov.w", op));
-                parts.push(InstructionPart::basic(" @("));
                 parts.push(InstructionPart::reloc());
-                parts.push(InstructionPart::basic(", pc), r"));
-                parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
             } else {
-                parts.push(InstructionPart::opcode("mov.w", op));
-                parts.push(InstructionPart::basic(" @(0x"));
-                parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xff) * 2 + 4)));
-                parts.push(InstructionPart::basic(", pc), r"));
-                parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
+                parts.push(InstructionPart::unsigned((op & 0xff) * 2 + 4));
             }
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("pc"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque(format!("r{}", (op >> 8) & 0xf)));
         }
         0xd000 => {
             let v_addr_aligned = (v_addr & 0xfffffffc) == 0;
@@ -166,36 +192,19 @@ fn match_nd8_f(
 
             if (test & 3) == 2 {
                 target_a -= 2;
-                let thing = test - 2;
-
-                if resolved.relocation.is_some() {
-                    parts.push(InstructionPart::opcode("mov.l", op));
-                    parts.push(InstructionPart::basic(" @("));
-                    parts.push(InstructionPart::reloc());
-                    parts.push(InstructionPart::basic(", pc), r"));
-                    parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
-                } else {
-                    parts.push(InstructionPart::opcode("mov.l", op));
-                    parts.push(InstructionPart::basic(" @(0x"));
-                    parts.push(InstructionPart::basic(format!("{:03X}", target_a)));
-                    parts.push(InstructionPart::basic(", pc), r"));
-                    parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
-                }
-            } else {
-                if resolved.relocation.is_some() {
-                    parts.push(InstructionPart::opcode("mov.l", op));
-                    parts.push(InstructionPart::basic(" @("));
-                    parts.push(InstructionPart::reloc());
-                    parts.push(InstructionPart::basic(", pc), r"));
-                    parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
-                } else {
-                    parts.push(InstructionPart::opcode("mov.l", op));
-                    parts.push(InstructionPart::basic(" @(0x"));
-                    parts.push(InstructionPart::basic(format!("{:03X}", target_a)));
-                    parts.push(InstructionPart::basic(", pc), r"));
-                    parts.push(InstructionPart::basic(format!("{}", (op >> 8) & 0xf)));
-                }
             }
+            parts.push(InstructionPart::opcode("mov.l", 0xd000));
+            parts.push(InstructionPart::basic("@("));
+            if resolved.relocation.is_some() {
+                parts.push(InstructionPart::reloc());
+            } else {
+                parts.push(InstructionPart::unsigned(target_a));
+            }
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("pc"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque(format!("r{}", (op >> 8) & 0xf)));
         }
         _ => match_i_f(v_addr, op, mode, parts, resolved, branch_dest),
     }
@@ -219,12 +228,12 @@ fn match_d12_f(
                 *branch_dest = Some(addr as u64);
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bra ", op));
+                    parts.push(InstructionPart::opcode("bra", op));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bra ", op));
-                    parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::unsigned(addr));
                 }
             } else {
                 let addr = (op as u32 & 0xfff) * 2 + v_addr + 4;
@@ -232,12 +241,12 @@ fn match_d12_f(
 
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bra ", op));
+                    parts.push(InstructionPart::opcode("bra", op));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bra ", op));
-                    parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::unsigned(addr));
                 }
             }
         }
@@ -1278,9 +1287,9 @@ mod test {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
                 InstructionPart::Basic(s) => write!(f, "{}", s),
-                InstructionPart::Opcode(s, _o) => write!(f, "{}", s),
+                InstructionPart::Opcode(s, _o) => write!(f, "{} ", s),
                 InstructionPart::Arg(arg) => write!(f, "{}", arg),
-                InstructionPart::Separator => write!(f, " "),
+                InstructionPart::Separator => write!(f, ", "),
             }
         }
     }
@@ -1619,15 +1628,15 @@ mod test {
         let arch: ArchSuperH = ArchSuperH {};
         let ops: &[(u16, u32, &str)] = &[
             // bra
-            (0xa000, 0x0000, "bra 0x00000004"),
-            (0xa001, 0x0000, "bra 0x00000006"),
-            (0xa800, 0x0000, "bra 0xFFFFF004"),
-            (0xa801, 0x0000, "bra 0xFFFFF006"),
+            (0xa000, 0x0000, "bra 0x4"),
+            (0xa001, 0x0000, "bra 0x6"),
+            (0xa800, 0x0000, "bra 0xfffff004"),
+            (0xa801, 0x0000, "bra 0xfffff006"),
             // bsr
-            (0xb000, 0x0000, "bsr 0x00000004"),
-            (0xb001, 0x0000, "bsr 0x00000006"),
-            (0xb800, 0x0000, "bsr 0xFFFFF004"),
-            (0xb801, 0x0000, "bsr 0xFFFFF006"),
+            (0xb000, 0x0000, "bsr 0x4"),
+            (0xb001, 0x0000, "bsr 0x6"),
+            (0xb800, 0x0000, "bsr 0xfffff004"),
+            (0xb801, 0x0000, "bsr 0xfffff006"),
         ];
 
         for &(opcode, addr, expected_str) in ops {
@@ -1657,16 +1666,16 @@ mod test {
     fn test_sh2_display_instruction_operations() {
         let arch = ArchSuperH {};
         let ops: &[(u16, u32, &str)] = &[
-            (0xcdff, 0x0000, "and.b #0xFF, @(r0, gbr)"),
-            (0xcfff, 0x0000, "or.b #0xFF, @(r0, gbr)"),
-            (0xccff, 0x0000, "tst.b #0xFF, @(r0, gbr)"),
-            (0xceff, 0x0000, "xor.b #0xFF, @(r0, gbr)"),
-            (0xc9ff, 0x0000, "and #0xFF, r0"),
-            (0x88ff, 0x0000, "cmp/eq #0xFF, r0"),
-            (0xcbff, 0x0000, "or #0xFF, r0"),
-            (0xc8ff, 0x0000, "tst #0xFF, r0"),
-            (0xcaff, 0x0000, "xor #0xFF, r0"),
-            (0xc3ff, 0x0000, "trapa #0xFF"),
+            (0xcdff, 0x0000, "and.b #0xff, @(r0, gbr)"),
+            (0xcfff, 0x0000, "or.b #0xff, @(r0, gbr)"),
+            (0xccff, 0x0000, "tst.b #0xff, @(r0, gbr)"),
+            (0xceff, 0x0000, "xor.b #0xff, @(r0, gbr)"),
+            (0xc9ff, 0x0000, "and #0xff, r0"),
+            (0x88ff, 0x0000, "cmp/eq #0xff, r0"),
+            (0xcbff, 0x0000, "or #0xff, r0"),
+            (0xc8ff, 0x0000, "tst #0xff, r0"),
+            (0xcaff, 0x0000, "xor #0xff, r0"),
+            (0xc3ff, 0x0000, "trapa #0xff"),
         ];
 
         for &(opcode, addr, expected_str) in ops {
@@ -1696,8 +1705,8 @@ mod test {
     fn test_sh2_add_mov_unknown_instructions() {
         let arch = ArchSuperH {};
         let ops: &[(u16, u32, &str)] = &[
-            (0x70FF, 0x0000, "add #0xFF, r0"),
-            (0xe0FF, 0x0000, "mov #255, r0"),
+            (0x70FF, 0x0000, "add #0xff, r0"),
+            (0xe0FF, 0x0000, "mov #0xff, r0"),
             (0x0000, 0x0000, ".word 0x0000 /* unknown instruction */"),
         ];
 
@@ -1727,10 +1736,8 @@ mod test {
     #[test]
     fn test_sh2_mov_instructions_with_labels() {
         let arch = ArchSuperH {};
-        let ops: &[(u16, u32, &str)] = &[
-            (0x9000, 0x0000, "mov.w @(0x004, pc), r0"),
-            (0xd000, 0x0000, "mov.l @(0x004, pc), r0"),
-        ];
+        let ops: &[(u16, u32, &str)] =
+            &[(0x9000, 0x0000, "mov.w @(0x4, pc), r0"), (0xd000, 0x0000, "mov.l @(0x4, pc), r0")];
 
         for &(opcode, addr, expected_str) in ops {
             let code = opcode.to_be_bytes();
