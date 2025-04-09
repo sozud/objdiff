@@ -1,9 +1,4 @@
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
-use core::cmp::Ordering;
+use alloc::{format, string::String, vec::Vec};
 
 use anyhow::{Result, bail};
 use object::elf;
@@ -12,8 +7,7 @@ use crate::{
     arch::Arch,
     diff::{DiffObjConfig, display::InstructionPart},
     obj::{
-        InstructionArg, InstructionRef, Relocation, RelocationFlags, ResolvedInstructionRef,
-        ResolvedRelocation, ScannedInstruction,
+        InstructionRef, Relocation, RelocationFlags, ResolvedInstructionRef, ScannedInstruction,
     },
 };
 
@@ -29,26 +23,189 @@ static REG_NAMES: [&str; 16] = [
     "r15",
 ];
 
+enum Ops {
+    // match_ni_f
+    AddImmRn,
+    MovImmRn,
+    // match_i_f
+    AndBImmAtR0Gbr,
+    OrBImmAtR0Gbr,
+    TstBImmAtR0Gbr,
+    XorBImmAtR0Gbr,
+    AndImmR0,
+    CmpEqImmR0,
+    OrImmR0,
+    TstImmR0,
+    XorImmR0,
+    Trapa,
+
+    // match_nd8_f
+    MovWAtDispPcRn,
+    MovLAtDispPcRn,
+
+    // match_d12_f
+    Bra,
+    Bsr,
+
+    // match_d_f
+    MovBR0AtDispGbr,
+    MovWR0AtDispGbr,
+    MovLR0AtDispGbr,
+    MovBAtDispGbrR0,
+    MovWAtDispGbrR0,
+    MovLAtDispGbrR0,
+    Bf,
+    Bfs,
+    Bt,
+    Bts,
+
+    // match_nmd_f
+    MovLRmAtDispRn,
+    MovLRDispRmRn,
+
+    // match_ff00
+    MovBAtDispRnR0,
+    MovWAtDispRnR0,
+    MovBR0AtDispRn,
+    MovWR0AtDispRn,
+
+    // match_f00f
+    AddRmRn,
+    AddcRmRn,
+    AddvRmRn,
+    AndRmRn,
+    CmpEqRmRn,
+    CmpHsRmRn,
+    CmpGeRmRn,
+    CmpHiRmRn,
+    CmpGtRmRn,
+    CmpStrRmRn,
+    Div1RmRn,
+    Div0sRmRn,
+    DmulsLRmRn,
+    DmuluLRmRn,
+    ExtsBRmRn,
+    ExtsWRmRn,
+    ExtuBRmRn,
+    ExtuWRmRn,
+    MovRmRn,
+    MulLRmRn,
+    MulsRmRn,
+    MuluRmRn,
+    NegRmRn,
+    NegcRmRn,
+    NotRmRn,
+    OrRmRn,
+    SubRmRn,
+    SubcRmRn,
+    SubvRmRn,
+    SwapBRmRn,
+    SwapWRmRn,
+    TstRmRn,
+    XorRmRn,
+    XtrctRmRn,
+    MovBRmAtRn,
+    MovWRmAtRn,
+    MovLRmAtRn,
+    MovBAtRmRn,
+    MovWAtRmRn,
+    MovLAtRmRn,
+    MacLAtRmIncAtRnInc,
+    MacWAtRmIncAtRnInc,
+    MovBAtRmIncRn,
+    MovWAtRmIncRn,
+    MovLAtRmIncRn,
+    MovBRmAtDecRn,
+    MovWRmAtDecRn,
+    MovLRmAtDecRn,
+    MovBRmAtR0Rn,
+    MovWRmAtR0Rn,
+    MovLRmAtR0Rn,
+    MovBAtR0RmRn,
+    MovWAtR0RmRn,
+    MovLAtR0RmRn,
+
+    // match_f0ff
+    CmpPlRn,
+    CmpPzRn,
+    DtRn,
+    MovtRn,
+    RotlRn,
+    RotrRn,
+    RotclRn,
+    RotcrRn,
+    ShalRn,
+    SharRn,
+    ShllRn,
+    ShlrRn,
+    Shll2Rn,
+    Shlr2Rn,
+    Shll8Rn,
+    Shlr8Rn,
+    Shll16Rn,
+    Shlr16Rn,
+    StcSrRn,
+    StcGbrRn,
+    StcVbrRn,
+    StsMachRn,
+    StsMaclRn,
+    StsPrRn,
+    TasB,
+    StcLSrAtDecrementRn,
+    StcLGbrAtDecrementRn,
+    StcLVbrAtDecrementRn,
+    StsLMachAtDecrementRn,
+    StsLMaclAtDecrementRn,
+    StsLPrAtDecrementRn,
+    LdcRnSr,
+    LdcRnGbr,
+    LdcRnVbr,
+    LdsRnMach,
+    LdsRnMacl,
+    LdsRnPr,
+    JmpAtRn,
+    JsrAtRn,
+    LdcLAtRnIncSr,
+    LdcLAtRnIncGbr,
+    LdcLAtRnIncVbr,
+    LdsLAtRnIncMach,
+    LdsLAtRnIncMacl,
+    LdsLAtRnIncPr,
+    BrafRn,
+    BsrfRn,
+
+    //sh2_disasm
+    Clrt,
+    Clrmac,
+    Div0u,
+    Nop,
+    Rte,
+    Rts,
+    Sett,
+    Sleep,
+}
 fn match_ni_f(
     _v_addr: u32,
     op: u16,
     _mode: bool,
     parts: &mut Vec<InstructionPart>,
-    resolved: &ResolvedInstructionRef,
-    branch_dest: &mut Option<u64>,
+    _resolved: &ResolvedInstructionRef,
+    _branch_dest: &mut Option<u64>,
 ) {
     match op & 0xf000 {
         0x7000 => {
+            // ADD #imm,Rn
             let reg = REG_NAMES[((op >> 8) & 0xf) as usize];
-            parts.push(InstructionPart::opcode("add", 0x7000));
+            parts.push(InstructionPart::opcode("add", Ops::AddImmRn as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::basic(reg));
         }
         0xe000 => {
+            // MOV #imm,Rn
             let reg = REG_NAMES[((op >> 8) & 0xf) as usize];
-            parts.push(InstructionPart::opcode("mov", 0xe000));
+            parts.push(InstructionPart::opcode("mov", Ops::MovImmRn as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
@@ -72,7 +229,8 @@ fn match_i_f(
 ) {
     match op & 0xff00 {
         0xcd00 => {
-            parts.push(InstructionPart::opcode("and.b", op));
+            // AND.B #imm,@(R0,GBR)
+            parts.push(InstructionPart::opcode("and.b", Ops::AndBImmAtR0Gbr as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
@@ -83,7 +241,8 @@ fn match_i_f(
             parts.push(InstructionPart::basic(")"));
         }
         0xcf00 => {
-            parts.push(InstructionPart::opcode("or.b", op));
+            // OR.B #imm,@(R0,GBR)
+            parts.push(InstructionPart::opcode("or.b", Ops::OrBImmAtR0Gbr as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
@@ -94,7 +253,8 @@ fn match_i_f(
             parts.push(InstructionPart::basic(")"));
         }
         0xcc00 => {
-            parts.push(InstructionPart::opcode("tst.b", op));
+            // TST.B #imm,@(R0,GBR)
+            parts.push(InstructionPart::opcode("tst.b", Ops::TstBImmAtR0Gbr as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
@@ -105,7 +265,8 @@ fn match_i_f(
             parts.push(InstructionPart::basic(")"));
         }
         0xce00 => {
-            parts.push(InstructionPart::opcode("xor.b", op));
+            // XOR.B #imm,@(R0,GBR)
+            parts.push(InstructionPart::opcode("xor.b", Ops::XorBImmAtR0Gbr as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
@@ -116,42 +277,43 @@ fn match_i_f(
             parts.push(InstructionPart::basic(")"));
         }
         0xc900 => {
-            parts.push(InstructionPart::opcode("and", op));
+            // AND #imm, R0
+            parts.push(InstructionPart::opcode("and", Ops::AndImmR0 as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque("r0"));
         }
         0x8800 => {
-            parts.push(InstructionPart::opcode("cmp/eq", op));
+            parts.push(InstructionPart::opcode("cmp/eq", Ops::CmpEqImmR0 as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque("r0"));
         }
         0xcb00 => {
-            parts.push(InstructionPart::opcode("or", op));
+            parts.push(InstructionPart::opcode("or", Ops::OrImmR0 as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque("r0"));
         }
         0xc800 => {
-            parts.push(InstructionPart::opcode("tst", op));
+            parts.push(InstructionPart::opcode("tst", Ops::TstImmR0 as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque("r0"));
         }
         0xca00 => {
-            parts.push(InstructionPart::opcode("xor", op));
+            parts.push(InstructionPart::opcode("xor", Ops::XorImmR0 as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
             parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque("r0"));
         }
         0xc300 => {
-            parts.push(InstructionPart::opcode("trapa", op));
+            parts.push(InstructionPart::opcode("trapa", Ops::Trapa as u16));
             parts.push(InstructionPart::basic("#"));
             parts.push(InstructionPart::unsigned(op & 0xff));
         }
@@ -169,9 +331,7 @@ fn match_nd8_f(
 ) {
     match op & 0xf000 {
         0x9000 => {
-            let thing = (op as u32 & 0xff) * 2 + 4 + v_addr;
-
-            parts.push(InstructionPart::opcode("mov.w", 0x9000));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtDispPcRn as u16));
             parts.push(InstructionPart::basic("@("));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
@@ -185,15 +345,13 @@ fn match_nd8_f(
             parts.push(InstructionPart::opaque(format!("r{}", (op >> 8) & 0xf)));
         }
         0xd000 => {
-            let v_addr_aligned = (v_addr & 0xfffffffc) == 0;
             let mut target_a = (op as u32 & 0xff) * 4 + 4;
-            let target_b = ((op as u32 & 0xff) * 4 + 4 + v_addr) & 0xfffffffc;
             let test = (op as u32 & 0xff) * 4 + 4 + v_addr;
 
             if (test & 3) == 2 {
                 target_a -= 2;
             }
-            parts.push(InstructionPart::opcode("mov.l", 0xd000));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLAtDispPcRn as u16));
             parts.push(InstructionPart::basic("@("));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
@@ -228,11 +386,11 @@ fn match_d12_f(
                 *branch_dest = Some(addr as u64);
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::opcode("bra", Ops::Bra as u16));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::opcode("bra", Ops::Bra as u16));
                     parts.push(InstructionPart::unsigned(addr));
                 }
             } else {
@@ -241,11 +399,11 @@ fn match_d12_f(
 
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::opcode("bra", Ops::Bra as u16));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bra", op));
+                    parts.push(InstructionPart::opcode("bra", Ops::Bra as u16));
                     parts.push(InstructionPart::unsigned(addr));
                 }
             }
@@ -257,24 +415,24 @@ fn match_d12_f(
                 *branch_dest = Some(addr as u64);
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bsr ", op));
+                    parts.push(InstructionPart::opcode("bsr", Ops::Bsr as u16));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bsr ", op));
-                    parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                    parts.push(InstructionPart::opcode("bsr", Ops::Bsr as u16));
+                    parts.push(InstructionPart::unsigned(addr));
                 }
             } else {
                 let addr = (op as u32 & 0xfff) * 2 + v_addr + 4;
                 *branch_dest = Some(addr as u64);
                 if resolved.relocation.is_some() {
                     // Use the label
-                    parts.push(InstructionPart::opcode("bsr ", op));
+                    parts.push(InstructionPart::opcode("bsr", Ops::Bsr as u16));
                     parts.push(InstructionPart::reloc());
                 } else {
                     // use an address
-                    parts.push(InstructionPart::opcode("bsr ", op));
-                    parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                    parts.push(InstructionPart::opcode("bsr", Ops::Bsr as u16));
+                    parts.push(InstructionPart::unsigned(addr));
                 }
             }
         }
@@ -292,40 +450,64 @@ fn match_d_f(
 ) {
     match op & 0xff00 {
         0xc000 => {
-            parts.push(InstructionPart::opcode("mov.b", op));
-            parts.push(InstructionPart::basic(" r0, @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff))));
-            parts.push(InstructionPart::basic(", gbr)"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBR0AtDispGbr as u16));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xc100 => {
-            parts.push(InstructionPart::opcode("mov.w", op));
-            parts.push(InstructionPart::basic(" r0, @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff) * 2)));
-            parts.push(InstructionPart::basic(", gbr)"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWR0AtDispGbr as u16));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xff) * 2));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xc200 => {
-            parts.push(InstructionPart::opcode("mov.l", op));
-            parts.push(InstructionPart::basic(" r0, @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff) * 4)));
-            parts.push(InstructionPart::basic(", gbr)"));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLR0AtDispGbr as u16));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xff) * 4));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
         }
         0xc400 => {
-            parts.push(InstructionPart::opcode("mov.b", op));
-            parts.push(InstructionPart::basic(" @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff))));
-            parts.push(InstructionPart::basic(", gbr), r0"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBAtDispGbrR0 as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned(op & 0xff));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xc500 => {
-            parts.push(InstructionPart::opcode("mov.w", op));
-            parts.push(InstructionPart::basic(" @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff) * 2)));
-            parts.push(InstructionPart::basic(", gbr), r0"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtDispGbrR0 as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xff) * 2));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0xc600 => {
-            parts.push(InstructionPart::opcode("mov.l", op));
-            parts.push(InstructionPart::basic(" @("));
-            parts.push(InstructionPart::basic(format!("0x{:03X}", (op & 0xff) * 4)));
-            parts.push(InstructionPart::basic(", gbr), r0"));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLAtDispGbrR0 as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xff) * 4));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0x8b00 => {
             let addr: u32 = if (op & 0x80) == 0x80 {
@@ -336,11 +518,11 @@ fn match_d_f(
                 ((op as u32 & 0xff) * 2).wrapping_add(v_addr).wrapping_add(4)
             };
             *branch_dest = Some(addr as u64);
-            parts.push(InstructionPart::opcode("bf ", op));
+            parts.push(InstructionPart::opcode("bf", Ops::Bf as u16));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
             } else {
-                parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                parts.push(InstructionPart::unsigned(addr));
             }
         }
         0x8f00 => {
@@ -352,11 +534,11 @@ fn match_d_f(
                 ((op as u32 & 0xff) * 2).wrapping_add(v_addr).wrapping_add(4)
             };
             *branch_dest = Some(addr as u64);
-            parts.push(InstructionPart::opcode("bf.s ", op));
+            parts.push(InstructionPart::opcode("bf.s", Ops::Bfs as u16));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
             } else {
-                parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                parts.push(InstructionPart::unsigned(addr));
             }
         }
         0x8900 => {
@@ -368,11 +550,11 @@ fn match_d_f(
                 ((op as u32 & 0xff) * 2).wrapping_add(v_addr).wrapping_add(4)
             };
             *branch_dest = Some(addr as u64);
-            parts.push(InstructionPart::opcode("bt ", op));
+            parts.push(InstructionPart::opcode("bt", Ops::Bt as u16));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
             } else {
-                parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                parts.push(InstructionPart::unsigned(addr));
             }
         }
         0x8d00 => {
@@ -384,11 +566,11 @@ fn match_d_f(
                 ((op as u32 & 0xff) * 2).wrapping_add(v_addr).wrapping_add(4)
             };
             *branch_dest = Some(addr as u64);
-            parts.push(InstructionPart::opcode("bt.s ", op));
+            parts.push(InstructionPart::opcode("bt.s", Ops::Bts as u16));
             if resolved.relocation.is_some() {
                 parts.push(InstructionPart::reloc());
             } else {
-                parts.push(InstructionPart::basic(format!("0x{:08X}", addr)));
+                parts.push(InstructionPart::unsigned(addr));
             }
         }
         _ => match_d12_f(v_addr, op, mode, parts, resolved, branch_dest),
@@ -407,21 +589,23 @@ fn match_nmd_f(
     let reg_n = REG_NAMES[((op >> 8) & 0xf) as usize];
     match op & 0xf000 {
         0x1000 => {
-            parts.push(InstructionPart::opcode("mov.l ", op));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLRmAtDispRn as u16));
             parts.push(InstructionPart::basic(reg_m));
-            parts.push(InstructionPart::basic(", @(0x"));
-            parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 4)));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xf) * 4));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::basic(reg_n));
             parts.push(InstructionPart::basic(")"));
         }
         0x5000 => {
-            parts.push(InstructionPart::opcode("mov.l", op));
-            parts.push(InstructionPart::basic(" @(0x"));
-            parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 4)));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLRDispRmRn as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::unsigned((op & 0xf) * 4));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::basic(reg_m));
-            parts.push(InstructionPart::basic("), "));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::basic(reg_n));
         }
         _ => match_d_f(v_addr, op, mode, parts, resolved, branch_dest),
@@ -437,50 +621,58 @@ fn match_ff00(
 ) {
     match op & 0xff00 {
         0x8400 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" @(0x"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBAtDispRnR0 as u16));
+            parts.push(InstructionPart::basic("@("));
             if (op & 0x100) == 0x100 {
-                parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 2)));
+                parts.push(InstructionPart::unsigned((op & 0xf) * 2));
             } else {
-                parts.push(InstructionPart::basic(format!("{:03X}", op & 0xf)));
+                parts.push(InstructionPart::unsigned(op & 0xf));
             }
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(REG_NAMES[((op >> 4) & 0xf) as usize]));
-            parts.push(InstructionPart::basic("), r0"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0x8500 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" @(0x"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtDispRnR0 as u16));
+            parts.push(InstructionPart::basic("@("));
             if (op & 0x100) == 0x100 {
-                parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 2)));
+                parts.push(InstructionPart::unsigned((op & 0xf) * 2));
             } else {
-                parts.push(InstructionPart::basic(format!("{:03X}", op & 0xf)));
+                parts.push(InstructionPart::unsigned(op & 0xf));
             }
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(REG_NAMES[((op >> 4) & 0xf) as usize]));
-            parts.push(InstructionPart::basic("), r0"));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("r0"));
         }
         0x8000 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" r0, @(0x"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBR0AtDispRn as u16));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
             if (op & 0x100) == 0x100 {
-                parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 2)));
+                parts.push(InstructionPart::unsigned((op & 0xf) * 2));
             } else {
-                parts.push(InstructionPart::basic(format!("{:03X}", op & 0xf)));
+                parts.push(InstructionPart::unsigned(op & 0xf));
             }
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(REG_NAMES[((op >> 4) & 0xf) as usize]));
             parts.push(InstructionPart::basic(")"));
         }
         0x8100 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" r0, @(0x"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWR0AtDispRn as u16));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
             if (op & 0x100) == 0x100 {
-                parts.push(InstructionPart::basic(format!("{:03X}", (op & 0xf) * 2)));
+                parts.push(InstructionPart::unsigned((op & 0xf) * 2));
             } else {
-                parts.push(InstructionPart::basic(format!("{:03X}", op & 0xf)));
+                parts.push(InstructionPart::unsigned(op & 0xf));
             }
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(REG_NAMES[((op >> 4) & 0xf) as usize]));
             parts.push(InstructionPart::basic(")"));
         }
@@ -501,386 +693,374 @@ fn match_f00f(
 
     match op & 0xf00f {
         0x300c => {
-            parts.push(InstructionPart::opcode("add", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("add", Ops::AddRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x300e => {
-            parts.push(InstructionPart::opcode("addc", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("addc", Ops::AddcRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x300f => {
-            parts.push(InstructionPart::opcode("addv", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("addv", Ops::AddvRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2009 => {
-            parts.push(InstructionPart::opcode("and", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("and", Ops::AndRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3000 => {
-            parts.push(InstructionPart::opcode("cmp/eq", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/eq", Ops::CmpEqRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3002 => {
-            parts.push(InstructionPart::opcode("cmp/hs", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/hs", Ops::CmpHsRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3003 => {
-            parts.push(InstructionPart::opcode("cmp/ge", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/ge", Ops::CmpGeRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3006 => {
-            parts.push(InstructionPart::opcode("cmp/hi", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/hi", Ops::CmpHiRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3007 => {
-            parts.push(InstructionPart::opcode("cmp/gt", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/gt", Ops::CmpGtRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200c => {
-            parts.push(InstructionPart::opcode("cmp/str", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("cmp/str", Ops::CmpStrRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3004 => {
-            parts.push(InstructionPart::opcode("div1", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("div1", Ops::Div1RmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2007 => {
-            parts.push(InstructionPart::opcode("div0s", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("div0s", Ops::Div0sRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x300d => {
-            parts.push(InstructionPart::opcode("dmuls.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("dmuls.l", Ops::DmulsLRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3005 => {
-            parts.push(InstructionPart::opcode("dmulu.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("dmulu.l", Ops::DmuluLRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600e => {
-            parts.push(InstructionPart::opcode("exts.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("exts.b", Ops::ExtsBRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600f => {
-            parts.push(InstructionPart::opcode("exts.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("exts.w", Ops::ExtsWRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600c => {
-            parts.push(InstructionPart::opcode("extu.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("extu.b", Ops::ExtuBRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600d => {
-            parts.push(InstructionPart::opcode("extu.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("extu.w", Ops::ExtuWRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6003 => {
-            parts.push(InstructionPart::opcode("mov", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov", Ops::MovRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x0007 => {
-            parts.push(InstructionPart::opcode("mul.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mul.l", Ops::MulLRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200f => {
-            parts.push(InstructionPart::opcode("muls", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("muls", Ops::MulsRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200e => {
-            parts.push(InstructionPart::opcode("mulu", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mulu", Ops::MuluRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600b => {
-            parts.push(InstructionPart::opcode("neg", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("neg", Ops::NegRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x600a => {
-            parts.push(InstructionPart::opcode("negc", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("negc", Ops::NegcRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6007 => {
-            parts.push(InstructionPart::opcode("not", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("not", Ops::NotRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200b => {
-            parts.push(InstructionPart::opcode("or", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("or", Ops::OrRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x3008 => {
-            parts.push(InstructionPart::opcode("sub", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("sub", Ops::SubRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x300a => {
-            parts.push(InstructionPart::opcode("subc", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("subc", Ops::SubcRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x300b => {
-            parts.push(InstructionPart::opcode("subv", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("subv", Ops::SubvRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6008 => {
-            parts.push(InstructionPart::opcode("swap.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("swap.b", Ops::SwapBRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6009 => {
-            parts.push(InstructionPart::opcode("swap.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("swap.w", Ops::SwapWRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2008 => {
-            parts.push(InstructionPart::opcode("tst", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("tst", Ops::TstRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200a => {
-            parts.push(InstructionPart::opcode("xor", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("xor", Ops::XorRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x200d => {
-            parts.push(InstructionPart::opcode("xtrct", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("xtrct", Ops::XtrctRmRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2000 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBRmAtRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2001 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWRmAtRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2002 => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLRmAtRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6000 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBAtRmRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6001 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtRmRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6002 => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLAtRmRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", "));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x000f => {
-            parts.push(InstructionPart::opcode("mac.l", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mac.l", Ops::MacLAtRmIncAtRnInc as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("+, @"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_n));
             parts.push(InstructionPart::basic("+"));
         }
         0x400f => {
-            parts.push(InstructionPart::opcode("mac.w", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mac.w", Ops::MacWAtRmIncAtRnInc as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("+, @"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_n));
             parts.push(InstructionPart::basic("+"));
         }
         0x6004 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBAtRmIncRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("+, "));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6005 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtRmIncRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("+, "));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x6006 => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" @"));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLAtRmIncRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("+, "));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2004 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBRmAtDecRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @-"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2005 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWRmAtDecRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @-"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x2006 => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLRmAtDecRn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @-"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x0004 => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBRmAtR0Rn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @(r0, "));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
             parts.push(InstructionPart::basic(")"));
         }
         0x0005 => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWRmAtR0Rn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @(r0, "));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
             parts.push(InstructionPart::basic(")"));
         }
         0x0006 => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLRmAtR0Rn as u16));
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic(", @(r0, "));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
             parts.push(InstructionPart::basic(")"));
         }
         0x000c => {
-            parts.push(InstructionPart::opcode("mov.b", op as u16));
-            parts.push(InstructionPart::basic(" @(r0, "));
+            parts.push(InstructionPart::opcode("mov.b", Ops::MovBAtR0RmRn as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("), "));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x000d => {
-            parts.push(InstructionPart::opcode("mov.w", op as u16));
-            parts.push(InstructionPart::basic(" @(r0, "));
+            parts.push(InstructionPart::opcode("mov.w", Ops::MovWAtR0RmRn as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("), "));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         0x000e => {
-            parts.push(InstructionPart::opcode("mov.l", op as u16));
-            parts.push(InstructionPart::basic(" @(r0, "));
+            parts.push(InstructionPart::opcode("mov.l", Ops::MovLAtR0RmRn as u16));
+            parts.push(InstructionPart::basic("@("));
+            parts.push(InstructionPart::opaque("r0"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_m));
-            parts.push(InstructionPart::basic("), "));
+            parts.push(InstructionPart::basic(")"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg_n));
         }
         _ => match_ff00(v_addr, op, mode, parts, resolved, branch_dest),
@@ -898,230 +1078,284 @@ fn match_f0ff(
     let reg = REG_NAMES[((op >> 8) & 0xf) as usize];
     match op & 0xf0ff {
         0x4015 => {
-            parts.push(InstructionPart::opcode("cmp/pl", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // CMP/PL Rn
+            parts.push(InstructionPart::opcode("cmp/pl", Ops::CmpPlRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4011 => {
-            parts.push(InstructionPart::opcode("cmp/pz", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // CMP/PZ Rn
+            parts.push(InstructionPart::opcode("cmp/pz", Ops::CmpPzRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4010 => {
-            parts.push(InstructionPart::opcode("dt", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // DT Rn
+            parts.push(InstructionPart::opcode("dt", Ops::DtRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x0029 => {
-            parts.push(InstructionPart::opcode("movt", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // MOVT Rn
+            parts.push(InstructionPart::opcode("movt", Ops::MovtRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4004 => {
-            parts.push(InstructionPart::opcode("rotl", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // ROTL Rn
+            parts.push(InstructionPart::opcode("rotl", Ops::RotlRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4005 => {
-            parts.push(InstructionPart::opcode("rotr", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // ROTR Rn
+            parts.push(InstructionPart::opcode("rotr", Ops::RotrRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4024 => {
-            parts.push(InstructionPart::opcode("rotcl", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // ROTCL Rn
+            parts.push(InstructionPart::opcode("rotcl", Ops::RotclRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4025 => {
-            parts.push(InstructionPart::opcode("rotcr", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // ROTCR Rn
+            parts.push(InstructionPart::opcode("rotcr", Ops::RotcrRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4020 => {
-            parts.push(InstructionPart::opcode("shal", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHAL Rn
+            parts.push(InstructionPart::opcode("shal", Ops::ShalRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4021 => {
-            parts.push(InstructionPart::opcode("shar", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHAR Rn
+            parts.push(InstructionPart::opcode("shar", Ops::SharRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4000 => {
-            parts.push(InstructionPart::opcode("shll", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLL Rn
+            parts.push(InstructionPart::opcode("shll", Ops::ShllRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4001 => {
-            parts.push(InstructionPart::opcode("shlr", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLR Rn
+            parts.push(InstructionPart::opcode("shlr", Ops::ShlrRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4008 => {
-            parts.push(InstructionPart::opcode("shll2", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLL2 Rn
+            parts.push(InstructionPart::opcode("shll2", Ops::Shll2Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4009 => {
-            parts.push(InstructionPart::opcode("shlr2", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLR2 Rn
+            parts.push(InstructionPart::opcode("shlr2", Ops::Shlr2Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4018 => {
-            parts.push(InstructionPart::opcode("shll8", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLL8 Rn
+            parts.push(InstructionPart::opcode("shll8", Ops::Shll8Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4019 => {
-            parts.push(InstructionPart::opcode("shlr8", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLR8 Rn
+            parts.push(InstructionPart::opcode("shlr8", Ops::Shlr8Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4028 => {
-            parts.push(InstructionPart::opcode("shll16", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLL16 Rn
+            parts.push(InstructionPart::opcode("shll16", Ops::Shll16Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4029 => {
-            parts.push(InstructionPart::opcode("shlr16", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // SHLR16 Rn
+            parts.push(InstructionPart::opcode("shlr16", Ops::Shlr16Rn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x0002 => {
-            parts.push(InstructionPart::opcode("stc", op as u16));
-            parts.push(InstructionPart::basic(" sr, "));
+            // STC SR,Rn
+            parts.push(InstructionPart::opcode("stc", Ops::StcSrRn as u16));
+            parts.push(InstructionPart::opaque("sr"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x0012 => {
-            parts.push(InstructionPart::opcode("stc", op as u16));
-            parts.push(InstructionPart::basic(" gbr, "));
+            // STC GBR,Rn
+            parts.push(InstructionPart::opcode("stc", Ops::StcGbrRn as u16));
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x0022 => {
-            parts.push(InstructionPart::opcode("stc vbr,", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // STC VBR,Rn
+            parts.push(InstructionPart::opcode("stc", Ops::StcVbrRn as u16));
+            parts.push(InstructionPart::opaque("vbr"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x000a => {
-            parts.push(InstructionPart::opcode("sts mach,", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // STS MACH,Rn
+            parts.push(InstructionPart::opcode("sts", Ops::StsMachRn as u16));
+            parts.push(InstructionPart::opaque("mach"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x001a => {
-            parts.push(InstructionPart::opcode("sts macl,", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // STS MACL,Rn
+            parts.push(InstructionPart::opcode("sts", Ops::StsMaclRn as u16));
+            parts.push(InstructionPart::opaque("macl"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x002a => {
-            parts.push(InstructionPart::opcode("sts pr,", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // STS PR,Rn
+            parts.push(InstructionPart::opcode("sts", Ops::StsPrRn as u16));
+            parts.push(InstructionPart::opaque("pr"));
+            parts.push(InstructionPart::separator());
             parts.push(InstructionPart::opaque(reg));
         }
         0x401b => {
-            parts.push(InstructionPart::opcode("tas.b", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            // TAS.B
+            parts.push(InstructionPart::opcode("tas.b", Ops::TasB as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4003 => {
-            parts.push(InstructionPart::opcode("stc.l sr, @-", op as u16));
+            parts.push(InstructionPart::opcode("stc.l", Ops::StcLSrAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("sr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4013 => {
-            parts.push(InstructionPart::opcode("stc.l gbr, @-", op as u16));
+            parts.push(InstructionPart::opcode("stc.l", Ops::StcLGbrAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("gbr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4023 => {
-            parts.push(InstructionPart::opcode("stc.l vbr, @-", op as u16));
+            parts.push(InstructionPart::opcode("stc.l", Ops::StcLVbrAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("vbr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4002 => {
-            parts.push(InstructionPart::opcode("sts.l mach, @-", op as u16));
+            parts.push(InstructionPart::opcode("sts.l", Ops::StsLMachAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("mach"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4012 => {
-            parts.push(InstructionPart::opcode("sts.l macl, @-", op as u16));
+            parts.push(InstructionPart::opcode("sts.l", Ops::StsLMaclAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("macl"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4022 => {
-            parts.push(InstructionPart::opcode("sts.l pr, @-", op as u16));
+            parts.push(InstructionPart::opcode("sts.l", Ops::StsLPrAtDecrementRn as u16));
+            parts.push(InstructionPart::opaque("pr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::basic("@-"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x400e => {
-            parts.push(InstructionPart::opcode("ldc ", op as u16));
+            parts.push(InstructionPart::opcode("ldc", Ops::LdcRnSr as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", sr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("sr"));
         }
         0x401e => {
-            parts.push(InstructionPart::opcode("ldc ", op as u16));
+            parts.push(InstructionPart::opcode("ldc", Ops::LdcRnGbr as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", gbr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
         }
         0x402e => {
-            parts.push(InstructionPart::opcode("ldc ", op as u16));
+            parts.push(InstructionPart::opcode("ldc", Ops::LdcRnVbr as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", vbr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("vbr"));
         }
         0x400a => {
-            parts.push(InstructionPart::opcode("lds ", op as u16));
+            parts.push(InstructionPart::opcode("lds", Ops::LdsRnMach as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", mach"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("mach"));
         }
         0x401a => {
-            parts.push(InstructionPart::opcode("lds ", op as u16));
+            parts.push(InstructionPart::opcode("lds", Ops::LdsRnMacl as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", macl"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("macl"));
         }
         0x402a => {
-            parts.push(InstructionPart::opcode("lds ", op as u16));
+            parts.push(InstructionPart::opcode("lds", Ops::LdsRnPr as u16));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic(", pr"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("pr"));
         }
         0x402b => {
-            parts.push(InstructionPart::opcode("jmp @", op as u16));
+            parts.push(InstructionPart::opcode("jmp", Ops::JmpAtRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x400b => {
-            parts.push(InstructionPart::opcode("jsr @", op as u16));
+            parts.push(InstructionPart::opcode("jsr", Ops::JsrAtRn as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
         }
         0x4007 => {
-            parts.push(InstructionPart::opcode("ldc.l @", op as u16));
+            parts.push(InstructionPart::opcode("ldc.l", Ops::LdcLAtRnIncSr as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, sr"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("sr"));
         }
         0x4017 => {
-            parts.push(InstructionPart::opcode("ldc.l @", op as u16));
+            parts.push(InstructionPart::opcode("ldc.l", Ops::LdcLAtRnIncGbr as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, gbr"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("gbr"));
         }
         0x4027 => {
-            parts.push(InstructionPart::opcode("ldc.l @", op as u16));
+            parts.push(InstructionPart::opcode("ldc.l", Ops::LdcLAtRnIncVbr as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, vbr"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("vbr"));
         }
         0x4006 => {
-            parts.push(InstructionPart::opcode("lds.l @", op as u16));
+            parts.push(InstructionPart::opcode("lds.l", Ops::LdsLAtRnIncMach as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, mach"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("mach"));
         }
         0x4016 => {
-            parts.push(InstructionPart::opcode("lds.l @", op as u16));
+            parts.push(InstructionPart::opcode("lds.l", Ops::LdsLAtRnIncMacl as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, macl"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("macl"));
         }
         0x4026 => {
-            parts.push(InstructionPart::opcode("lds.l @", op as u16));
+            parts.push(InstructionPart::opcode("lds.l", Ops::LdsLAtRnIncPr as u16));
+            parts.push(InstructionPart::basic("@"));
             parts.push(InstructionPart::opaque(reg));
-            parts.push(InstructionPart::basic("+, pr"));
+            parts.push(InstructionPart::basic("+"));
+            parts.push(InstructionPart::separator());
+            parts.push(InstructionPart::opaque("pr"));
         }
         0x0023 => {
-            parts.push(InstructionPart::opcode("braf", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("braf", Ops::BrafRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         0x0003 => {
-            parts.push(InstructionPart::opcode("bsrf", op as u16));
-            parts.push(InstructionPart::basic(" "));
+            parts.push(InstructionPart::opcode("bsrf", Ops::BsrfRn as u16));
             parts.push(InstructionPart::opaque(reg));
         }
         _ => {
@@ -1139,14 +1373,14 @@ fn sh2_disasm(
     branch_dest: &mut Option<u64>,
 ) {
     match op & 0xffff {
-        0x0008 => parts.push(InstructionPart::opcode("clrt", op as u16)),
-        0x0028 => parts.push(InstructionPart::opcode("clrmac", op as u16)),
-        0x0019 => parts.push(InstructionPart::opcode("div0u", op as u16)),
-        0x0009 => parts.push(InstructionPart::opcode("nop", op as u16)),
-        0x002b => parts.push(InstructionPart::opcode("rte", op as u16)),
-        0x000b => parts.push(InstructionPart::opcode("rts", op as u16)),
-        0x0018 => parts.push(InstructionPart::opcode("sett", op as u16)),
-        0x001b => parts.push(InstructionPart::opcode("sleep", op as u16)),
+        0x0008 => parts.push(InstructionPart::opcode("clrt", Ops::Clrt as u16)),
+        0x0028 => parts.push(InstructionPart::opcode("clrmac", Ops::Clrmac as u16)),
+        0x0019 => parts.push(InstructionPart::opcode("div0u", Ops::Div0u as u16)),
+        0x0009 => parts.push(InstructionPart::opcode("nop", Ops::Nop as u16)),
+        0x002b => parts.push(InstructionPart::opcode("rte", Ops::Rte as u16)),
+        0x000b => parts.push(InstructionPart::opcode("rts", Ops::Rts as u16)),
+        0x0018 => parts.push(InstructionPart::opcode("sett", Ops::Sett as u16)),
+        0x001b => parts.push(InstructionPart::opcode("sleep", Ops::Sleep as u16)),
         _ => {
             match_f0ff(v_addr, op, mode, parts, resolved, branch_dest);
         }
@@ -1282,6 +1516,7 @@ mod test {
     use std::fmt::{self, Display};
 
     use super::*;
+    use crate::obj::InstructionArg;
 
     impl<'a> Display for InstructionPart<'a> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1308,14 +1543,14 @@ mod test {
     fn test_sh2_display_instruction_basic_ops() {
         let arch = ArchSuperH {};
         let ops: [(u16, &str); 8] = [
-            (0x0008, "clrt"),
-            (0x0028, "clrmac"),
-            (0x0019, "div0u"),
-            (0x0009, "nop"),
-            (0x002b, "rte"),
-            (0x000b, "rts"),
-            (0x0018, "sett"),
-            (0x001b, "sleep"),
+            (0x0008, "clrt "),
+            (0x0028, "clrmac "),
+            (0x0019, "div0u "),
+            (0x0009, "nop "),
+            (0x002b, "rte "),
+            (0x000b, "rts "),
+            (0x0018, "sett "),
+            (0x001b, "sleep "),
         ];
 
         for (opcode, expected_str) in ops {
@@ -1336,7 +1571,8 @@ mod test {
             )
             .unwrap();
 
-            assert_eq!(parts, vec![InstructionPart::opcode(expected_str, opcode)]);
+            let joined_str: String = parts.iter().map(|part| format!("{}", part)).collect();
+            assert_eq!(joined_str, expected_str.to_string());
         }
     }
 
@@ -1505,14 +1741,14 @@ mod test {
     fn test_sh2_display_instruction_mov_immediate_offset() {
         let arch = ArchSuperH {};
         let ops: [(u16, &str); 8] = [
-            (0x8000, "mov.b r0, @(0x000, r0)"),
-            (0x8011, "mov.b r0, @(0x001, r1)"),
-            (0x8102, "mov.w r0, @(0x004, r0)"),
-            (0x8113, "mov.w r0, @(0x006, r1)"),
-            (0x8404, "mov.b @(0x004, r0), r0"),
-            (0x8415, "mov.b @(0x005, r1), r0"),
-            (0x8506, "mov.w @(0x00C, r0), r0"),
-            (0x8517, "mov.w @(0x00E, r1), r0"),
+            (0x8000, "mov.b r0, @(0x0, r0)"),
+            (0x8011, "mov.b r0, @(0x1, r1)"),
+            (0x8102, "mov.w r0, @(0x4, r0)"),
+            (0x8113, "mov.w r0, @(0x6, r1)"),
+            (0x8404, "mov.b @(0x4, r0), r0"),
+            (0x8415, "mov.b @(0x5, r1), r0"),
+            (0x8506, "mov.w @(0xc, r0), r0"),
+            (0x8517, "mov.w @(0xe, r1), r0"),
         ];
 
         for (opcode, expected_str) in ops {
@@ -1542,26 +1778,26 @@ mod test {
     fn test_sh2_display_instruction_gbr_and_branches() {
         let arch = ArchSuperH {};
         let ops: &[(u16, u32, &str)] = &[
-            (0xc000, 0x0000, "mov.b r0, @(0x000, gbr)"),
-            (0xc07f, 0x0000, "mov.b r0, @(0x07F, gbr)"),
-            (0xc100, 0x0000, "mov.w r0, @(0x000, gbr)"),
-            (0xc17f, 0x0000, "mov.w r0, @(0x0FE, gbr)"),
-            (0xc200, 0x0000, "mov.l r0, @(0x000, gbr)"),
-            (0xc27f, 0x0000, "mov.l r0, @(0x1FC, gbr)"),
-            (0xc400, 0x0000, "mov.b @(0x000, gbr), r0"),
-            (0xc47f, 0x0000, "mov.b @(0x07F, gbr), r0"),
-            (0xc500, 0x0000, "mov.w @(0x000, gbr), r0"),
-            (0xc57f, 0x0000, "mov.w @(0x0FE, gbr), r0"),
-            (0xc600, 0x0000, "mov.l @(0x000, gbr), r0"),
-            (0xc67f, 0x0000, "mov.l @(0x1FC, gbr), r0"),
-            (0x8b20, 0x1000, "bf 0x00000044"),
-            (0x8b80, 0x1000, "bf 0xFFFFFF04"),
-            (0x8f10, 0x2000, "bf.s 0x00000024"),
-            (0x8f90, 0x2000, "bf.s 0xFFFFFF24"),
-            (0x8904, 0x3000, "bt 0x0000000C"),
-            (0x8980, 0x3000, "bt 0xFFFFFF04"),
-            (0x8d04, 0x4000, "bt.s 0x0000000C"),
-            (0x8d80, 0x4000, "bt.s 0xFFFFFF04"),
+            (0xc000, 0x0000, "mov.b r0, @(0x0, gbr)"),
+            (0xc07f, 0x0000, "mov.b r0, @(0x7f, gbr)"),
+            (0xc100, 0x0000, "mov.w r0, @(0x0, gbr)"),
+            (0xc17f, 0x0000, "mov.w r0, @(0xfe, gbr)"),
+            (0xc200, 0x0000, "mov.l r0, @(0x0, gbr)"),
+            (0xc27f, 0x0000, "mov.l r0, @(0x1fc, gbr)"),
+            (0xc400, 0x0000, "mov.b @(0x0, gbr), r0"),
+            (0xc47f, 0x0000, "mov.b @(0x7f, gbr), r0"),
+            (0xc500, 0x0000, "mov.w @(0x0, gbr), r0"),
+            (0xc57f, 0x0000, "mov.w @(0xfe, gbr), r0"),
+            (0xc600, 0x0000, "mov.l @(0x0, gbr), r0"),
+            (0xc67f, 0x0000, "mov.l @(0x1fc, gbr), r0"),
+            (0x8b20, 0x1000, "bf 0x44"),
+            (0x8b80, 0x1000, "bf 0xffffff04"),
+            (0x8f10, 0x2000, "bf.s 0x24"),
+            (0x8f90, 0x2000, "bf.s 0xffffff24"),
+            (0x8904, 0x3000, "bt 0xc"),
+            (0x8980, 0x3000, "bt 0xffffff04"),
+            (0x8d04, 0x4000, "bt.s 0xc"),
+            (0x8d80, 0x4000, "bt.s 0xffffff04"),
         ];
 
         for &(opcode, addr, expected_str) in ops {
@@ -1592,12 +1828,12 @@ mod test {
         let arch = ArchSuperH {};
         let ops: &[(u16, u32, &str)] = &[
             // mov.l rX, @(0xXXX, rY)
-            (0x1000, 0x0000, "mov.l r0, @(0x000, r0)"),
-            (0x1001, 0x0000, "mov.l r0, @(0x004, r0)"),
-            (0x100f, 0x0000, "mov.l r0, @(0x03C, r0)"),
-            (0x101f, 0x0000, "mov.l r1, @(0x03C, r0)"),
+            (0x1000, 0x0000, "mov.l r0, @(0x0, r0)"),
+            (0x1001, 0x0000, "mov.l r0, @(0x4, r0)"),
+            (0x100f, 0x0000, "mov.l r0, @(0x3c, r0)"),
+            (0x101f, 0x0000, "mov.l r1, @(0x3c, r0)"),
             // mov.l @(0xXXX, rY), rX
-            (0x5000, 0x0000, "mov.l @(0x000, r0), r0"),
+            (0x5000, 0x0000, "mov.l @(0x0, r0), r0"),
         ];
 
         for &(opcode, addr, expected_str) in ops {
